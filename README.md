@@ -2,6 +2,12 @@
 
 A simple command-line tool that converts IP addresses to country codes. It uses the MaxMind GeoLite2 database for accurate IP-to-country lookups.
 
+> **Important**
+> 
+> Downloading the MaxMind GeoLite2 database normally requires signing up and going through a few steps. To make things easier, `oip2co` uses a pre-hosted version from [this link](https://github.com/PrxyHunter/GeoLite2/releases/latest/download/GeoLite2-Country.mmdb).
+>
+> However, if you prefer, you can download the official file yourself from the MaxMind website and place it at `/tmp/GeoLite2-Country.mmdb`. The tool will use that file if it's available.
+
 ## Features
 
 - Fast IP-to-country lookups  
