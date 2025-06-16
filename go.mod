@@ -2,9 +2,6 @@ module github.com/pzaeemfar/oip2co
 
 go 1.21
 
-require github.com/oschwald/geoip2-golang v1.9.0
+require github.com/ip2location/ip2location-go/v9 v9.7.1
 
-require (
-    github.com/oschwald/maxminddb-golang v1.11.0 // indirect
-    golang.org/x/sys v0.15.0 // indirect
-)
+require lukechampine.com/uint128 v1.2.0 // indirect

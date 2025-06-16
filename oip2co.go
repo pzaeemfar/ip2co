@@ -5,141 +5,113 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 
-	"github.com/oschwald/geoip2-golang"
+	"github.com/pzaeemfar/oip2co/geoip"
 )
 
-const (
-	geoliteURL = "https://github.com/PrxyHunter/GeoLite2/releases/latest/download/GeoLite2-Country.mmdb"
-	targetPath = "/tmp/GeoLite2-Country.mmdb"
-)
+func parseInput(input string) string {
+	if strings.Contains(input, "://") {
+		u, err := url.Parse(input)
+		if err == nil && u.Host != "" {
+			host := u.Host
+			if strings.Contains(host, ":") {
+				host, _, _ = net.SplitHostPort(host)
+			}
+			return host
+		}
+	}
+	return input
+}
 
 func main() {
-	debug := flag.Bool("debug", false, "enable debug output")
-	jsonOut := flag.Bool("json", false, "output results as JSON")
+	debug := flag.Bool("debug", false, "Enable debug output")
+	jsonOut := flag.Bool("json", false, "Output results as JSON")
 	flag.Parse()
 
-	if _, err := os.Stat(targetPath); err != nil {
-		out, err := os.Create(targetPath)
-		if err != nil {
-			if *debug {
-				fmt.Fprintf(os.Stderr, "Error creating file: %v\n", err)
-			}
-			return
-		}
-		defer out.Close()
-
-		resp, err := http.Get(geoliteURL)
-		if err != nil {
-			if *debug {
-				fmt.Fprintf(os.Stderr, "Error downloading file: %v\n", err)
-			}
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			if *debug {
-				fmt.Fprintf(os.Stderr, "Bad status: %s\n", resp.Status)
-			}
-			return
-		}
-
-		_, err = io.Copy(out, resp.Body)
-		if err != nil {
-			if *debug {
-				fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-			}
-			return
-		}
-
-		if *debug {
-			fmt.Fprintln(os.Stderr, "Successfully downloaded GeoLite2-Country.mmdb to /tmp")
-		}
-	}
-
-	db, err := geoip2.Open(targetPath)
-	if err != nil {
-		if *debug {
-			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
-		}
-		return
-	}
-	defer db.Close()
-
 	stat, _ := os.Stdin.Stat()
-	var ips []string
-
+	var inputs []string
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
-			ip := strings.TrimSpace(scanner.Text())
-			if ip != "" {
-				ips = append(ips, ip)
+			line := strings.TrimSpace(scanner.Text())
+			if line != "" {
+				inputs = append(inputs, line)
 			}
-		}
-		if err := scanner.Err(); err != nil && *debug {
-			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
 		}
 	} else {
-		ips = flag.Args()
-		if len(ips) == 0 {
-			if *debug {
-				fmt.Fprintln(os.Stderr, "No IP addresses provided via stdin or arguments")
-			}
+		inputs = flag.Args()
+		if len(inputs) == 0 {
+			flag.Usage()
 			return
 		}
 	}
 
-	// Store results in a map for JSON output
 	results := make(map[string]string)
+	var mu sync.Mutex
 
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			if *debug {
-				fmt.Fprintf(os.Stderr, "Invalid IP address: %s\n", ipStr)
+	inputCh := make(chan string)
+	var wg sync.WaitGroup
+	workerCount := 50
+
+	worker := func() {
+		defer wg.Done()
+		for input := range inputCh {
+			host := parseInput(input)
+
+			ip := net.ParseIP(host)
+			if ip == nil {
+				if *debug {
+					fmt.Fprintf(os.Stderr, "Skipping domain (not IP): %s\n", input)
+				}
+				continue
 			}
-			continue
-		}
 
-		record, err := db.Country(ip)
-		if err != nil {
-			if *debug {
-				fmt.Fprintf(os.Stderr, "Error looking up IP %s: %v\n", ipStr, err)
+			country, err := geoip.GetCountry(ip.String(), *debug)
+			if err != nil {
+				if *debug {
+					fmt.Fprintf(os.Stderr, "Lookup failed for IP %s: %v\n", ip, err)
+				}
+				mu.Lock()
+				results[input] = fmt.Sprintf("Lookup failed: %v", err)
+				mu.Unlock()
+				continue
 			}
-			continue
-		}
 
-		if *debug {
-			fmt.Fprintf(os.Stderr, "Debug - Record: %+v\n", record)
-		}
+			mu.Lock()
+			results[input] = country
+			mu.Unlock()
 
-		countryCode := record.Country.IsoCode
-		if countryCode == "" {
-			countryCode = "Unknown"
-		}
-
-		if *jsonOut {
-			results[ipStr] = countryCode
-		} else {
-			fmt.Printf("%s - %s\n", ipStr, countryCode)
+			if !*jsonOut {
+				fmt.Printf("%s - %s\n", input, country)
+			}
 		}
 	}
+
+	wg.Add(workerCount)
+	for i := 0; i < workerCount; i++ {
+		go worker()
+	}
+
+	for _, input := range inputs {
+		inputCh <- input
+	}
+	close(inputCh)
+
+	wg.Wait()
 
 	if *jsonOut {
-		outJSON, err := json.Marshal(results)
+		out, err := json.Marshal(results)
 		if err != nil {
 			if *debug {
-				fmt.Fprintf(os.Stderr, "Error marshaling JSON: %v\n", err)
+				fmt.Fprintf(os.Stderr, "JSON marshal error: %v\n", err)
 			}
-			return
+		} else {
+			fmt.Println(string(out))
 		}
-		fmt.Println(string(outJSON))
 	}
 }

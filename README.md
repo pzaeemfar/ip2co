@@ -1,12 +1,10 @@
 # oip2co
 
-A simple command-line tool that converts IP addresses to country codes. It uses the MaxMind GeoLite2 database for accurate IP-to-country lookups.
+A simple command-line tool that converts IP addresses to country codes. It uses the **IP2Location LITE IP Geolocation Database** for accurate IP-to-country lookups.
 
 > **Important**
 >
-> Downloading the MaxMind GeoLite2 database normally requires signing up and going through a few steps. To make things easier, `oip2co` uses a pre-hosted version from [this link](https://github.com/PrxyHunter/GeoLite2/releases/latest/download/GeoLite2-Country.mmdb).
->
-> However, if you prefer, you can download the official file yourself from the MaxMind website and place it at `/tmp/GeoLite2-Country.mmdb`. The tool will use that file if it's available.
+> IPv6 addresses and domain names are not supported. Any such inputs will be skipped and ignored.
 
 ## Features
 
@@ -23,27 +21,18 @@ A simple command-line tool that converts IP addresses to country codes. It uses 
 go install github.com/pzaeemfar/oip2co@latest
 ```
 
-## Usage
+## Usage (Examples)
 
 ```bash
-# Look up Google's DNS (using stdin)
-echo "8.8.8.8" | oip2co
-# Output: 8.8.8.8 - US
+cat proxies.txt | oip2co
 
-# Look up a private IP
 echo "192.168.1.1" | oip2co
-# Output: 192.168.1.1 - Unknown
 
-# Look up an IPv6 address
-echo "2001:4860:4860::8888" | oip2co
-# Output: 2001:4860:4860::8888 - US
+oip2co 8.8.8.8 http://1.1.1.1:80
 
-# Look up IPs via command line arguments (if no stdin)
-oip2co 8.8.8.8 1.1.1.1
-
-# Use JSON output
 oip2co -json 8.8.8.8
-# Output: {"8.8.8.8":"US"}
+
+oip2co -debug -json 8.8.8.8
 ```
 
 ## Options
@@ -53,7 +42,6 @@ oip2co -json 8.8.8.8
 
 ## Notes
 
-* The program automatically downloads the GeoLite2 database to `/tmp/GeoLite2-Country.mmdb` if missing
 * Invalid IP addresses are skipped with optional debug info
 * Private and unrecognized IP ranges return "Unknown" as country code
 * If stdin is empty, IPs from CLI arguments are used
